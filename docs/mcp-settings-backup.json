@@ -1,0 +1,31 @@
+{
+  "_comment": "This is a backup of MCP settings with credentials REDACTED for security",
+  "_location": "/Users/dionvm/Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+  "mcpServers": {
+    "github.com/pashpashpash/mcp-atlassian": {
+      "command": "/Users/dionvm/Documents/Cline/MCP/mcp-atlassian/venv/bin/mcp-atlassian",
+      "args": [],
+      "env": {
+        "CONFLUENCE_URL": "https://truefirestudios.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "dion@truefirestudios.com",
+        "CONFLUENCE_API_TOKEN": "REDACTED - Check secure storage",
+        "JIRA_URL": "https://truefirestudios.atlassian.net",
+        "JIRA_USERNAME": "dion@truefirestudios.com",
+        "JIRA_API_TOKEN": "REDACTED - Check secure storage"
+      },
+      "disabled": false,
+      "autoApprove": []
+    },
+    "google-drive": {
+      "command": "npx",
+      "args": ["-y", "@chinchillaenterprises/mcp-google-drive"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "876730889226-8rp5oeus4utbdh5cdou2etiimrccnc1u.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "REDACTED - Check secure storage",
+        "GOOGLE_REFRESH_TOKEN": "REDACTED - Check secure storage"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
