@@ -5,15 +5,12 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { logger } from './logger.js';
-import { TimeoutRecoveryManager } from './timeout-recovery-manager.js';
 
 export class MCPManager {
   constructor() {
     this.servers = new Map();
     this.initialized = false;
     this.connectionPool = new Map(); // Reuse connections
-    this.timeoutRecoveryManager = new TimeoutRecoveryManager();
     
     // MCP server configurations
     this.serverConfigs = {
@@ -49,26 +46,20 @@ export class MCPManager {
    * Initialize MCP server connections
    */
   async initialize() {
-    logger.info('MCP Manager: Initializing servers...');
+    console.log('MCP Manager: Initializing servers...');
     
     for (const [key, config] of Object.entries(this.serverConfigs)) {
       if (config.enabled) {
         try {
           await this.connectServer(key, config);
         } catch (error) {
-          logger.error(`Failed to connect to ${config.name}`, {
-            server: config.name,
-            key: key,
-            error: error.message
-          });
+          console.error(`Failed to connect to ${config.name}:`, error.message);
         }
       }
     }
     
     this.initialized = true;
-    logger.info('MCP Manager: Initialization complete', {
-      connectedServers: Array.from(this.servers.keys())
-    });
+    console.log('MCP Manager: Initialization complete');
   }
   
   /**
@@ -84,13 +75,9 @@ export class MCPManager {
           conn.client.listTools(),
           new Promise((_, reject) => setTimeout(() => reject(new Error('Health check timeout')), 2000))
         ]);
-        logger.debug(`Connection for ${key} is healthy`);
         return conn;
       } catch (error) {
-        logger.warning(`Connection for ${key} is stale, reconnecting...`, {
-          server: key,
-          error: error.message
-        });
+        console.log(`Connection for ${key} is stale, reconnecting...`);
         this.connectionPool.delete(key);
       }
     }
@@ -109,11 +96,7 @@ export class MCPManager {
    * Connect to a specific MCP server
    */
   async connectServer(key, config) {
-    const startTime = Date.now();
-    logger.info(`Connecting to ${config.name}...`, {
-      server: key,
-      name: config.name
-    });
+    console.log(`Connecting to ${config.name}...`);
     
     try {
       const mergedEnv = {
@@ -161,7 +144,6 @@ export class MCPManager {
       await Promise.race([connectPromise, timeoutPromise]);
       
       // Test the connection
-      const toolsStartTime = Date.now();
       const tools = await Promise.race([
         client.listTools(),
         new Promise((_, reject) => 
@@ -169,13 +151,7 @@ export class MCPManager {
         )
       ]);
       
-      const connectionDuration = Date.now() - startTime;
-      logger.logConnection(config.name, true, connectionDuration);
-      logger.info(`${config.name} connected with ${tools.tools.length} tools available`, {
-        server: key,
-        toolCount: tools.tools.length,
-        toolListDuration: Date.now() - toolsStartTime
-      });
+      console.log(`${config.name} connected with ${tools.tools.length} tools available`);
       
       const serverInfo = {
         client,
@@ -188,8 +164,7 @@ export class MCPManager {
       this.connectionPool.set(key, serverInfo);
       
     } catch (error) {
-      const duration = Date.now() - startTime;
-      logger.logConnection(config.name, false, duration, error);
+      console.error(`Failed to connect to ${config.name}:`, error);
       throw error;
     }
   }
@@ -207,13 +182,13 @@ export class MCPManager {
       // For Jira - use extremely simple query
       if (/jira|issue|ticket|sprint|bug|task/i.test(query)) {
         try {
-          logger.info('Attempting simple Jira query...', { query, brand });
+          console.log('Attempting simple Jira query...');
           
           // Start with just 3 recent items
           let jiraResult = await this.callToolWithRetry('atlassian', 'jira_search', {
             jql: 'ORDER BY updated DESC',
             limit: 3
-          }, 10000, 2, query); // 10s timeout, 2 retries, pass query for context
+          }, 10000, 2); // 10s timeout, 2 retries
           
           if (jiraResult && !jiraResult.error) {
             results.jira = jiraResult;
@@ -221,11 +196,11 @@ export class MCPManager {
             // If that fails, try project-specific query
             const projectMatch = query.match(/\b([A-Z]{2,})\b/);
             if (projectMatch) {
-              logger.info(`Trying project-specific query for ${projectMatch[1]}...`);
+              console.log(`Trying project-specific query for ${projectMatch[1]}...`);
               jiraResult = await this.callToolWithRetry('atlassian', 'jira_search', {
                 jql: `project = ${projectMatch[1]} ORDER BY updated DESC`,
                 limit: 3
-              }, 10000, 1, query);
+              }, 10000, 1);
               
               if (jiraResult && !jiraResult.error) {
                 results.jira = jiraResult;
@@ -240,11 +215,7 @@ export class MCPManager {
             }
           }
         } catch (error) {
-          logger.error('Jira search error', {
-            query,
-            error: error.message,
-            operation: 'jira_search'
-          });
+          console.error('Jira search error:', error);
           results.jira = { 
             error: 'Jira API timeout',
             suggestion: 'The Atlassian API is responding slowly. Try again later.'
@@ -255,13 +226,13 @@ export class MCPManager {
       // For Confluence - use very simple query
       if (/confluence|doc|prd|spec|wiki|charter|project/i.test(query)) {
         try {
-          logger.info('Attempting simple Confluence query...', { query, brand });
+          console.log('Attempting simple Confluence query...');
           
           // Just get 3 recent pages
           const confluenceResult = await this.callToolWithRetry('atlassian', 'confluence_search', {
             query: 'type=page ORDER BY lastmodified DESC',
             limit: 3
-          }, 10000, 2, query);
+          }, 10000, 2);
           
           if (confluenceResult && !confluenceResult.error) {
             results.confluence = confluenceResult;
@@ -272,11 +243,7 @@ export class MCPManager {
             };
           }
         } catch (error) {
-          logger.error('Confluence search error', {
-            query,
-            error: error.message,
-            operation: 'confluence_search'
-          });
+          console.error('Confluence search error:', error);
           results.confluence = { 
             error: 'Confluence API timeout',
             suggestion: 'The Atlassian API is responding slowly. Try again later.'
@@ -286,11 +253,7 @@ export class MCPManager {
       
       return results;
     } catch (error) {
-      logger.error('Error in queryAtlassian', {
-        query,
-        brand,
-        error: error.message
-      });
+      console.error('Error in queryAtlassian:', error);
       return { error: error.message };
     }
   }
@@ -330,16 +293,11 @@ export class MCPManager {
       const result = await this.callToolWithRetry('googleDrive', 'drive_search_files', {
         query: searchQuery,
         pageSize: 10
-      }, 15000, 2, query);
+      }, 15000, 2);
       
       return result;
     } catch (error) {
-      logger.error('Google Drive search error', {
-        query,
-        brand,
-        error: error.message,
-        operation: 'drive_search_files'
-      });
+      console.error('Google Drive search error:', error);
       return {
         error: error.message,
         suggestion: 'Try searching with more specific terms'
@@ -348,85 +306,37 @@ export class MCPManager {
   }
   
   /**
-   * Call a tool with retry logic using intelligent recovery strategies
+   * Call a tool with retry logic
    */
-  async callToolWithRetry(serverKey, toolName, params = {}, timeout = 15000, maxRetries = 2, query = '') {
+  async callToolWithRetry(serverKey, toolName, params = {}, timeout = 15000, maxRetries = 2) {
     let lastError;
-    let currentParams = params;
-    let currentTimeout = timeout;
-    
-    // Extract context from query for smarter retries
-    const context = this.timeoutRecoveryManager.extractQueryContext(query, toolName);
-    
-    // Get suggested timeout based on performance history
-    const suggestedTimeout = this.timeoutRecoveryManager.getSuggestedTimeout(`${serverKey}.${toolName}`, timeout);
-    if (suggestedTimeout > timeout) {
-      currentTimeout = suggestedTimeout;
-      logger.info(`Using suggested timeout ${suggestedTimeout}ms based on performance history`);
-    }
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const startTime = Date.now();
-        
         if (attempt > 0) {
-          // Get next recovery strategy
-          const strategy = this.timeoutRecoveryManager.getNextStrategy(toolName, attempt - 1, context);
-          
-          if (strategy) {
-            const recovery = this.timeoutRecoveryManager.applyStrategy(strategy, params, context);
-            currentParams = recovery.params;
-            currentTimeout = recovery.timeout;
-            
-            logger.info(`Applying recovery strategy: ${strategy.name}`, {
-              server: serverKey,
-              tool: toolName,
-              attempt,
-              strategy: strategy.name,
-              description: recovery.description,
-              newTimeout: currentTimeout
-            });
-          }
-          
-          // Exponential backoff
-          const backoffDelay = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          console.log(`Retry attempt ${attempt} for ${toolName}...`);
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
         }
         
-        const result = await this.callToolWithTimeout(serverKey, toolName, currentParams, currentTimeout);
-        
+        const result = await this.callToolWithTimeout(serverKey, toolName, params, timeout);
         if (result && !result.error) {
-          // Success! Update performance metrics
-          const duration = Date.now() - startTime;
-          this.timeoutRecoveryManager.updatePerformanceMetrics(`${serverKey}.${toolName}`, duration, true);
           return result;
         }
         
         lastError = result?.error || 'Unknown error';
       } catch (error) {
         lastError = error;
-        const duration = Date.now() - startTime;
-        
-        // Record failure for learning
-        this.timeoutRecoveryManager.recordFailure(`${serverKey}.${toolName}`, currentParams, duration, error);
-        
-        logger.warning(`Attempt ${attempt + 1} failed for ${toolName}`, {
-          server: serverKey,
-          tool: toolName,
-          attempt: attempt + 1,
-          error: error.message,
-          duration
-        });
+        console.error(`Attempt ${attempt + 1} failed for ${toolName}:`, error.message);
       }
     }
     
-    // All retries failed - return structured error with recovery options
-    return this.timeoutRecoveryManager.formatTimeoutError(
-      `${serverKey}.${toolName}`,
-      params,
-      maxRetries + 1,
-      context
-    );
+    // All retries failed
+    return {
+      error: `Failed after ${maxRetries + 1} attempts`,
+      message: lastError?.message || lastError,
+      partial: true
+    };
   }
   
   /**
@@ -439,13 +349,7 @@ export class MCPManager {
     }
     
     const startTime = Date.now();
-    logger.logMCPOperation(`${serverKey}.${toolName}`, params);
-    logger.debug(`Calling ${toolName} with ${timeout}ms timeout...`, {
-      server: serverKey,
-      tool: toolName,
-      timeout,
-      params
-    });
+    console.log(`Calling ${toolName} with ${timeout}ms timeout...`);
     
     try {
       const callPromise = server.client.callTool(toolName, params);
@@ -455,19 +359,13 @@ export class MCPManager {
       
       const result = await Promise.race([callPromise, timeoutPromise]);
       
-      const duration = Date.now() - startTime;
-      logger.logMCPResult(`${serverKey}.${toolName}`, duration, true, result);
+      console.log(`${toolName} completed in ${Date.now() - startTime}ms`);
       return result.content[0];
     } catch (error) {
       const duration = Date.now() - startTime;
+      console.error(`${toolName} failed after ${duration}ms:`, error.message);
       
       if (error.message.includes('Timeout') || error.message.includes('timeout')) {
-        logger.logTimeout(`${serverKey}.${toolName}`, timeout, {
-          server: serverKey,
-          tool: toolName,
-          params,
-          actualDuration: duration
-        });
         return {
           error: 'Request timeout',
           message: `The request took longer than ${timeout}ms`,
@@ -475,7 +373,6 @@ export class MCPManager {
         };
       }
       
-      logger.logMCPResult(`${serverKey}.${toolName}`, duration, false, error.message);
       throw error;
     }
   }
@@ -506,11 +403,7 @@ export class MCPManager {
       try {
         results.atlassian = await this.queryAtlassian(query, brand);
       } catch (error) {
-        logger.error('Error querying Atlassian', {
-          query,
-          brand,
-          error: error.message
-        });
+        console.error('Error querying Atlassian:', error);
         results.atlassian = { error: error.message };
       }
     }
@@ -522,11 +415,7 @@ export class MCPManager {
       try {
         results.googleDrive = await this.queryGoogleDrive(query, brand);
       } catch (error) {
-        logger.error('Error querying Google Drive', {
-          query,
-          brand,
-          error: error.message
-        });
+        console.error('Error querying Google Drive:', error);
         results.googleDrive = { error: error.message };
       }
     }
@@ -622,20 +511,12 @@ export class MCPManager {
    * Disconnect all servers
    */
   async disconnect() {
-    logger.info('Disconnecting all MCP servers...');
-    
     for (const [key, server] of this.servers) {
       try {
         await server.client.close();
-        logger.info(`Disconnected from ${server.config.name}`, {
-          server: key,
-          name: server.config.name
-        });
+        console.log(`Disconnected from ${server.config.name}`);
       } catch (error) {
-        logger.error(`Error disconnecting from ${key}`, {
-          server: key,
-          error: error.message
-        });
+        console.error(`Error disconnecting from ${key}:`, error);
       }
     }
     

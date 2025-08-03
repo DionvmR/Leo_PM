@@ -33,7 +33,7 @@ class Config {
     return {
       llm: {
         provider: 'openai',
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4o-mini',
         maxTokens: 2000,
         temperature: 0.7
       },
